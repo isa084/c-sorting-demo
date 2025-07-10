@@ -1,0 +1,57 @@
+# This file defines the CI/CD pipeline for our project.
+# GitLab automatically detects this file in the root of the repository.
+
+# 'stages' defines the sequence of steps in our pipeline.
+# Jobs in the 'build' stage run first, followed by jobs in the 'test' stage.
+stages:
+  - build
+  - test
+
+# This is our first job, named 'build_job'.
+build_job:
+  # This job belongs to the 'build' stage.
+  stage: build
+
+  # 'tags' is the most critical part. It tells GitLab to send this job ONLY
+  # to a runner that has the 'c-builder' tag. This is how we ensure our
+  # self-hosted runner gets the work.
+  tags:
+    - c-builder
+
+  # 'script' contains the shell commands the runner will execute.
+  # We are using the Makefile we built in Phase 1.
+  script:
+    - echo "Compiling the code..."
+    - make all  # This runs the 'all' target in our Makefile, creating the 'test_runner' executable.
+    - echo "Compile complete."
+
+  # 'artifacts' defines files and directories that should be saved after a job
+  # succeeds. These saved files can then be used by jobs in later stages.
+  artifacts:
+    paths:
+      - test_runner  # Save the compiled executable.
+      - Makefile     # Also pass the Makefile to the test stage for the 'clean' command.
+    expire_in: 1 hour # The artifact will be deleted after 1 hour.
+
+# This is our second job, named 'test_job'.
+test_job:
+  # This job belongs to the 'test' stage, so it runs after the 'build' stage completes.
+  stage: test
+
+  # We use the same tag to ensure it runs on our dedicated runner.
+  tags:
+    - c-builder
+
+  # This job depends on 'build_job'. It will only start if 'build_job' succeeds.
+  # It also ensures that it will download the artifacts from 'build_job'.
+  needs:
+    - build_job
+
+  # The script for this job.
+  script:
+    - echo "Running tests..."
+    # The 'test_runner' executable is available here because it was saved as an artifact.
+    # We must make it executable before running it.
+    - chmod +x test_runner
+    - ./test_runner  # This runs our test program. It will exit with 0 for success or 1 for failure.
+    - echo "Tests complete."
