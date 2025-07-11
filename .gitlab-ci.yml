@@ -1,13 +1,34 @@
-# This file defines the CI/CD pipeline for our project.
-# GitLab automatically detects this file in the root of the repository.
+# This pipeline is designed for the GitLab Free tier workaround.
+# It fetches the code directly from GitHub in the first step.
 
 # 'stages' defines the sequence of steps in our pipeline.
 # Jobs in the 'build' stage run first, followed by jobs in the 'test' stage.
 stages:
+  - setup
   - build
   - test
 
-# This is our first job, named 'build_job'.
+variables:
+  # Replace with your GitHub username and repo name.
+  # Using variables makes this easy to reuse.
+  GITHUB_REPO: "https://github.com/isa084/c-sorting-demo.git"
+  REPO_DIR: "c-sorting-demo"
+
+clone_repo:
+  stage: setup
+  tags:
+    - c-builder # Must run on our runner with Docker access
+  script:
+    # Use the GITHUB_PAT variable we set in GitLab settings for authentication.
+    # The --depth 1 makes the clone faster.
+    - git clone --depth 1 "https://oauth2:${GITHUB_PAT}@${GITHUB_REPO#https://}"
+    - echo "Cloned repository successfully."
+  artifacts:
+    # Pass the entire cloned repository directory to the next stages.
+    paths:
+      - $REPO_DIR/
+    expire_in: 1 hour
+
 build_job:
   # This job belongs to the 'build' stage.
   stage: build
@@ -17,10 +38,11 @@ build_job:
   # self-hosted runner gets the work.
   tags:
     - c-builder
-
-  # 'script' contains the shell commands the runner will execute.
-  # We are using the Makefile we built in Phase 1.
+  needs:
+    - clone_repo # Depends on the clone job
   script:
+    - echo "Navigating into the cloned repository..."
+    - cd $REPO_DIR
     - echo "Compiling the code..."
     - make all  # This runs the 'all' target in our Makefile, creating the 'test_runner' executable.
     - echo "Compile complete."
@@ -29,9 +51,8 @@ build_job:
   # succeeds. These saved files can then be used by jobs in later stages.
   artifacts:
     paths:
-      - test_runner  # Save the compiled executable.
-      - Makefile     # Also pass the Makefile to the test stage for the 'clean' command.
-    expire_in: 1 hour # The artifact will be deleted after 1 hour.
+      - $REPO_DIR/test_runner
+    expire_in: 1 hour
 
 # This is our second job, named 'test_job'.
 test_job:
@@ -49,6 +70,8 @@ test_job:
 
   # The script for this job.
   script:
+    - echo "Navigating into the cloned repository..."
+    - cd $REPO_DIR
     - echo "Running tests..."
     # The 'test_runner' executable is available here because it was saved as an artifact.
     # We must make it executable before running it.
